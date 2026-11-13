@@ -1,3 +1,4 @@
+
 name: iOS Simulator Build
 
 on:
@@ -9,7 +10,8 @@ on:
 jobs:
   build-ios:
     runs-on: macos-15
-    timeout-minutes: 35
+    timeout-minutes: 45
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,20 +21,42 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install JavaScript dependencies
+      - name: Install dependencies
         run: npm install
 
       - name: TypeScript check
         run: npm run typecheck
 
-      - name: Generate native iOS project
+      - name: Generate iOS project
         run: npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install
+
+      - name: Find Xcode workspace
+        run: |
+          WORKSPACE=$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)
+          if [ -z "$WORKSPACE" ]; then
+            echo "ERROR: No Xcode workspace generated"
+            exit 1
+          fi
+          echo "WORKSPACE=$WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Build iOS Simulator app
         run: |
-          WORKSPACE=$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)
-          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{getline; print $1; exit}')
+          echo "Workspace: $WORKSPACE"
+
+          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{flag=1;next} flag && NF {print $1; exit}')
+
+          if [ -z "$SCHEME" ]; then
+            echo "ERROR: No Xcode scheme found"
+            exit 1
+          fi
+
           echo "Building scheme: $SCHEME"
+
           xcodebuild \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
@@ -49,3 +73,4 @@ jobs:
           path: build/DerivedData/Build/Products/Release-iphonesimulator/*.app
           if-no-files-found: error
           retention-days: 14
+
